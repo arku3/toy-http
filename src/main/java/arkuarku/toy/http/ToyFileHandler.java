@@ -20,24 +20,58 @@ public class ToyFileHandler implements ToyRequestHandler {
     @Override
     public Optional<ToyHttpResponse> handle(ToyHttpRequest request) {
         try {
-            if (request.getMethod() == ToyHttpMethod.GET) {
-                // TODO: Implement the file handling logic
-                String path = request.getUrl().getPath();
-                if (path.endsWith("/")) {
-                    path += "index.html";
+            if (request.getMethod() != ToyHttpMethod.GET && request.getMethod() != ToyHttpMethod.HEAD) {
+                return Optional.empty();
+            }
+            String path = request.getUrl().getPath();
+            if (path.endsWith("/")) {
+                path += "index.html";
+            }
+            File file = new File(documentRoot, path);
+            if (!file.canRead()) {
+                return Optional.empty();
+            }
+            ToyHttpResponse response = new ToyHttpResponse();
+            response.getHeaders().addHeader("Content-Type", Optional.ofNullable(Files.probeContentType(file.toPath())).orElse("application/octet-stream"));
+            response.getHeaders().addHeader("Content-Length", String.valueOf(file.length()));
+            // handle range header
+            if (request.getHeaders().getHeaderFirst("Range") != null) {
+                String range = request.getHeaders().getHeaderFirst("Range");
+                String[] rangeParts = range.split("=");
+                String[] rangeValues = rangeParts[1].split("-");
+                long start = Long.parseLong(rangeValues[0]);
+                long end = rangeValues.length > 1 ? Long.parseLong(rangeValues[1]) : 0;
+                long length = file.length();
+                if (end == 0) {
+                    end = length - 1;
                 }
-                File file = new File(documentRoot, path);
-                if (file.canRead()) {
-                    ToyHttpResponse response = new ToyHttpResponse();
-                    response.getHeaders().addHeader("Content-Type", Optional.ofNullable(Files.probeContentType(file.toPath())).orElse("application/octet-stream"));
-                    response.getHeaders().addHeader("Content-Length", String.valueOf(file.length()));
-                    response.setBody(FileChannel.open(file.toPath(), StandardOpenOption.READ));
+                if (start > end) {
+                    response.setStatus(416);
+                    response.setStatusText("Requested Range Not Satisfiable");
                     return Optional.of(response);
                 }
-            } else if (request.getMethod() == ToyHttpMethod.HEAD) {
-                // TODO: Implement the file handling logic
+                if (start >= length) {
+                    response.setStatus(416);
+                    response.setStatusText("Requested Range Not Satisfiable");
+                    return Optional.of(response);
+                }
+                if (end >= length) {
+                    end = length - 1;
+                }
+                response.setStatus(206);
+                response.setStatusText("Partial Content");
+                response.getHeaders().addHeader("Content-Range", "bytes " + start + "-" + end + "/" + length);
+                response.getHeaders().setHeader("Content-Length", String.valueOf(end - start + 1));
+                if (request.getMethod() == ToyHttpMethod.GET) {
+                    response.setBody(FileChannel.open(file.toPath(), StandardOpenOption.READ).position(start));
+                }
+                return Optional.of(response);
             }
-            return Optional.empty();
+
+            if (request.getMethod() == ToyHttpMethod.GET) {
+                response.setBody(FileChannel.open(file.toPath(), StandardOpenOption.READ));
+            }
+            return Optional.of(response);
         } catch (IOException e) {
             logger.log(Level.SEVERE, "Error while handling request", e);
             ToyHttpResponse serverError = new ToyHttpResponse();
