@@ -130,12 +130,15 @@ public class ToyServer {
                     keepAlive = true;
                 }
 
-                ToyHttpResponse response = handlers.stream().map(handler -> handler.handle(request)).filter(Optional::isPresent).map(Optional::get).findFirst().orElseGet(() -> {
-                    ToyHttpResponse notFound = new ToyHttpResponse();
-                    notFound.setStatus(404);
-                    notFound.setStatusText("Not Found");
-                    return notFound;
-                });
+                ToyHttpResponse response = handlers.stream()
+                    .filter(handler -> handler.supports(request))
+                    .map(handler -> handler.handle(request))
+                    .filter(Optional::isPresent).map(Optional::get).findFirst().orElseGet(() -> {
+                        ToyHttpResponse notFound = new ToyHttpResponse();
+                        notFound.setStatus(404);
+                        notFound.setStatusText("Not Found");
+                        return notFound;
+                    });
                 logger.finer(response.getStatus() + " " + response.getStatusText());
                 logger.finer(response.getHeaders().toString());
                 if (keepAlive) {
