@@ -15,7 +15,17 @@ public class ToyHttpHeaders {
      * @param value the value of the header
      */
     public void addHeader(String name, String value) {
-        headers.computeIfAbsent(name, k -> new LinkedHashSet<>()).add(value);
+        headers.computeIfAbsent(name.toLowerCase(), k -> new LinkedHashSet<>()).add(value);
+    }
+
+    /**
+     * Sets a header to the headers. Replace the existing header with the same name.
+     *
+     * @param name  the name of the header
+     * @param value the value of the header
+     */
+    public void setHeader(String name, String value) {
+        headers.put(name.toLowerCase(), new LinkedHashSet<>(Collections.singletonList(value)));
     }
 
     /**
@@ -25,7 +35,7 @@ public class ToyHttpHeaders {
      * @return the set of values of the header with the given name, or null if the header is not present.
      */
     public Set<String> getHeader(String name) {
-        LinkedHashSet<String> values = headers.get(name);
+        LinkedHashSet<String> values = headers.get(name.toLowerCase());
         if (values == null) {
             return null;
         }
@@ -43,7 +53,7 @@ public class ToyHttpHeaders {
      * @return the first value of the header with the given name, or null if the header is not present.
      */
     public String getHeaderFirst(String name) {
-        LinkedHashSet<String> values = headers.get(name);
+        LinkedHashSet<String> values = headers.get(name.toLowerCase());
         if (values == null) {
             return null;
         }

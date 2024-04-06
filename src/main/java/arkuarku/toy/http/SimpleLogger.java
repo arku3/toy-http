@@ -12,12 +12,9 @@ public final class SimpleLogger {
         Logger logger = Logger.getLogger(name);
         ConsoleHandler consoleHandler = new SimpleConsoleHandler();
         consoleHandler.setFormatter(new SimpleFormatter());
-        try {
-            consoleHandler.setEncoding("UTF-8");
-        } catch (Exception e) {
-        }
+        consoleHandler.setLevel(Level.FINE);
         logger.addHandler(consoleHandler);
-        logger.setLevel(Level.INFO);
+        logger.setLevel(Level.FINE);
         return logger;
     }
 }

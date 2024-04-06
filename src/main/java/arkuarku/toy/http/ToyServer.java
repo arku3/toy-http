@@ -35,7 +35,7 @@ public class ToyServer {
 
             mainLoop();
         } catch (IOException e) {
-            Utils.slientlyClose(serverSocketChannel, selector);
+            Utils.silentlyClose(serverSocketChannel, selector);
         }
 
     }
@@ -52,14 +52,15 @@ public class ToyServer {
                         continue;
                     }
                     if (key.isAcceptable()) {
+                        logger.fine("Accepting new connection");
                         SocketChannel clientChannel = serverSocketChannel.accept();
                         clientChannel.configureBlocking(false);
                         // Register the new channel with the selector
                         clientChannel.register(selector, SelectionKey.OP_READ);
                     }
                     if (key.isReadable()) {
-                        System.out.println("New request");
-                        Thread.startVirtualThread(new RequestHandlerRunnable((SocketChannel) key.channel()));
+                        logger.fine("Start new VirtualThread to handle request");
+                        Thread.startVirtualThread(new RequestHandlerRunnable(key));
                     }
                 }
             } catch (IOException e) {
@@ -80,7 +81,6 @@ public class ToyServer {
         }
         ToyHttpMethod method = ToyHttpMethod.valueOf(parts[0].toUpperCase());
         String path = parts[1];
-
         String protocol = parts[2].toUpperCase();
         if (!protocol.equals("HTTP/1.1")) {
             throw new IOException("Unsupported protocol: " + protocol);
@@ -94,7 +94,7 @@ public class ToyServer {
             }
             String[] values = parts[1].split(",");
             for (String value : values) {
-                headers.addHeader(parts[0].toLowerCase(), value.trim()); // we store all headers in lowercase
+                headers.addHeader(parts[0], value.trim());
             }
             line = reader.readLine();
         }
@@ -108,38 +108,63 @@ public class ToyServer {
 
     private class RequestHandlerRunnable implements Runnable {
         private final SocketChannel clientChannel;
+        private final SelectionKey key;
 
-        public RequestHandlerRunnable(SocketChannel clientChannel) {
-            this.clientChannel = clientChannel;
+        public RequestHandlerRunnable(SelectionKey key) {
+            this.key = key;
+            this.clientChannel = (SocketChannel) key.channel();
+            key.interestOpsAnd(~SelectionKey.OP_READ); // remove the read interest, as we are handling it
         }
 
         @Override
         public void run() {
             BufferedReader reader = null;
+            boolean keepAlive = false;
             try {
+                logger.fine("RemoteAddress:" + clientChannel.getRemoteAddress());
+
                 reader = new BufferedReader(Channels.newReader(clientChannel, "UTF-8")); // TODO: HTTP/1.1 header should be acsii?
                 ToyHttpRequest request = createFrom(reader);
-                logger.info(request.toString());
+                logger.finer(request.toString());
+                if (request.getHeaders().getHeaderFirst("Connection").equalsIgnoreCase("keep-alive")) {
+                    keepAlive = true;
+                }
+
                 ToyHttpResponse response = handlers.stream().map(handler -> handler.handle(request)).filter(Optional::isPresent).map(Optional::get).findFirst().orElseGet(() -> {
                     ToyHttpResponse notFound = new ToyHttpResponse();
                     notFound.setStatus(404);
                     notFound.setStatusText("Not Found");
                     return notFound;
                 });
-                logger.info(response.getStatus() + " " + response.getStatusText());
-                logger.info(response.getHeaders().toString());
+                logger.finer(response.getStatus() + " " + response.getStatusText());
+                logger.finer(response.getHeaders().toString());
+                if (keepAlive) {
+                    response.getHeaders().setHeader("Connection", "keep-alive");
+                    response.getHeaders().setHeader("Keep-Alive", "timeout=5, max=100");
+                }
                 clientChannel.write(response.headerBuffer());
                 if (response.getBody() != null) {
                     ByteBuffer body = ByteBuffer.allocate(2048);
-                    response.getBody().read(body);
-                    body.flip();
-                    clientChannel.write(body);
+                    while (response.getBody().read(body) != -1) {
+                        body.flip();
+                        clientChannel.write(body);
+                        body.clear();
+                    }
                 }
+            } catch (ClosedChannelException e) {
+                logger.log(Level.FINEST, "Client connection closed", e);
             } catch (IOException e) {
                 logger.log(Level.WARNING, "Error in request", e);
+                keepAlive = false; // error in request, close the connection
             } finally {
-                // TODO: handle keep-alive?
-                Utils.slientlyClose(reader, clientChannel);
+                Utils.silentlyClose(reader);
+                if (keepAlive) {
+                    if (key.isValid()) {
+                        key.interestOpsOr(SelectionKey.OP_READ); // add the read interest back
+                    }
+                } else {
+                    Utils.silentlyClose(clientChannel);
+                }
             }
         }
     }

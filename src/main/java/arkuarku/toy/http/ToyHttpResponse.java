@@ -43,20 +43,20 @@ public class ToyHttpResponse {
         return headers;
     }
 
-    public ByteBuffer headerBuffer() {
-        StringBuilder sb = new StringBuilder();
-        sb.append(protocol).append(" ").append(status).append(" ").append(statusText).append("\r\n");
-        sb.append(headers.toString());
-        sb.append("\r\n");
-        return ByteBuffer.wrap(sb.toString().getBytes());
-    }
-
     public void setBody(ReadableByteChannel body) {
         this.body = body;
     }
 
     public ReadableByteChannel getBody() {
         return body;
+    }
+
+    public ByteBuffer headerBuffer() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(protocol).append(" ").append(status).append(" ").append(statusText).append("\r\n");
+        sb.append(headers.toString());
+        sb.append("\r\n");
+        return ByteBuffer.wrap(sb.toString().getBytes());
     }
 
 }

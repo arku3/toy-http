@@ -3,6 +3,7 @@ package arkuarku.toy.http;
 import java.io.File;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 import java.util.logging.Level;
@@ -28,8 +29,7 @@ public class ToyFileHandler implements ToyRequestHandler {
                 File file = new File(documentRoot, path);
                 if (file.canRead()) {
                     ToyHttpResponse response = new ToyHttpResponse();
-                    // TODO: add mime type
-                    response.getHeaders().addHeader("Content-Type", "text/html");
+                    response.getHeaders().addHeader("Content-Type", Optional.ofNullable(Files.probeContentType(file.toPath())).orElse("application/octet-stream"));
                     response.getHeaders().addHeader("Content-Length", String.valueOf(file.length()));
                     response.setBody(FileChannel.open(file.toPath(), StandardOpenOption.READ));
                     return Optional.of(response);
